@@ -1,0 +1,101 @@
+/**********************************************************************
+* 📌 01 – SQL SERVER BASIC (T-SQL)
+* קובץ זה כולל את כל הבסיס שאתה צריך לדעת לראיון:
+* - מבוא
+* - SELECT בסיסי
+* - תנאים וסינונים
+* - פונקציות מחרוזות ותאריכים
+* - GROUP BY / HAVING / ORDER BY
+**********************************************************************/
+
+----------------------------------------------------------------------
+-- 🔹 מבוא ל-SQL Server
+-- SQL Server משתמש ב-T-SQL (הרחבה של SQL רגיל).
+-- הבדל חשוב: TOP במקום LIMIT, פונקציות ייחודיות (IIF, EOMONTH).
+-- טיפוסי נתונים נפוצים:
+-- INT, DECIMAL(p,s), NVARCHAR(n), DATE, DATETIME2, BIT, UNIQUEIDENTIFIER.
+----------------------------------------------------------------------
+
+-- דוגמה לטיפוסי נתונים:
+CREATE TABLE dbo.ExampleTypes (
+    id INT PRIMARY KEY,
+    price DECIMAL(10,2),
+    name NVARCHAR(100),
+    created_at DATETIME2 DEFAULT SYSDATETIME(),
+    active BIT
+);
+
+----------------------------------------------------------------------
+-- 🔹 SELECT בסיסי
+-- זה הבסיס: בוחרים עמודות מטבלה עם תנאים ומיון
+----------------------------------------------------------------------
+
+SELECT TOP (10) OrderID, CustomerID, OrderDate
+FROM dbo.Orders
+WHERE OrderDate >= '2024-01-01'
+ORDER BY OrderDate DESC;
+
+----------------------------------------------------------------------
+-- 🔹 WHERE – תנאים וסינונים
+----------------------------------------------------------------------
+
+-- תנאי גדול מ
+SELECT * FROM dbo.Orders
+WHERE Amount > 100;
+
+-- שימוש ב-IN
+SELECT * FROM dbo.Customers
+WHERE CustomerID IN (1,2,3);
+
+-- BETWEEN כולל את הקצוות
+SELECT * FROM dbo.Orders
+WHERE OrderDate BETWEEN '2024-01-01' AND '2024-12-31';
+
+-- טיפול ב-NULL
+SELECT ISNULL(MiddleName,'---') AS mid
+FROM dbo.Customers;
+
+----------------------------------------------------------------------
+-- 🔹 פונקציות מחרוזות
+----------------------------------------------------------------------
+
+SELECT CustomerName,
+       LEN(CustomerName) AS length,
+       UPPER(CustomerName) AS upper_name,
+       SUBSTRING(CustomerName,1,3) AS prefix
+FROM dbo.Customers;
+
+----------------------------------------------------------------------
+-- 🔹 פונקציות תאריכים
+----------------------------------------------------------------------
+
+SELECT GETDATE() AS now,
+       EOMONTH(GETDATE()) AS end_of_month,
+       DATEADD(DAY,7,GETDATE()) AS next_week,
+       DATEDIFF(DAY,'2024-01-01',GETDATE()) AS days_passed;
+
+----------------------------------------------------------------------
+-- 🔹 GROUP BY + HAVING + ORDER BY
+----------------------------------------------------------------------
+
+-- סכום מכירות לכל לקוח
+SELECT CustomerID,
+       SUM(Amount) AS total_amount,
+       COUNT(*) AS order_count
+FROM dbo.Orders
+WHERE OrderDate >= '2024-01-01'
+GROUP BY CustomerID
+HAVING SUM(Amount) > 500   -- HAVING עובד אחרי GROUP BY
+ORDER BY total_amount DESC;
+
+----------------------------------------------------------------------
+-- 🔹 סיכום
+-- SELECT – בחירת נתונים
+-- WHERE – סינון לפני קיבוץ
+-- GROUP BY – קיבוץ נתונים
+-- HAVING – סינון אחרי קיבוץ
+-- ORDER BY – מיון סופי
+-- TOP (N) – החזרת מספר שורות (SQL Server)
+-- ISNULL / COALESCE – טיפול ב-NULL
+-- פונקציות מחרוזות ותאריכים – כלי חובה בראיונות
+----------------------------------------------------------------------
