@@ -1,7 +1,91 @@
-SELECT – בחירת עמודות.
+# 📌 SQL Server – יסודות חשובים לראיון (עם הסברים בעברית בתוך הקוד)
 
-FROM – מאיזו טבלה.
+---
 
-WHERE – סינון שורות.
+## 1. SELECT + FROM + WHERE
+```sql
+-- דוגמה בסיסית לשליפה עם סינון:
+SELECT game_id, home_team_id, away_team_id, home_score, away_score
+FROM games
+WHERE date >= '2025-01-01';
 
-💡 זה הלחם והחמאה של כל שאילתה. המראיין ירצה לראות שאתה יודע לנסח בסיס.
+-- הסבר:
+-- SELECT – אילו עמודות מחזירים
+-- FROM – מאיזו טבלה
+-- WHERE – אילו שורות לסנן (כאן רק משחקים אחרי 2025-01-01)
+
+-- ב-SQL Server מגבילים תוצאות עם TOP (ולא LIMIT כמו ב-MySQL):
+SELECT TOP 5 *
+FROM games
+ORDER BY date DESC;
+
+-- הסבר:
+-- TOP 5 – מחזיר רק 5 שורות
+-- ORDER BY date DESC – מסדר לפי תאריך מהאחרון לראשון
+
+-- כמה משחקים שיחקה כל קבוצה:
+SELECT team_id, COUNT(*) AS games_played
+FROM games_teams
+GROUP BY team_id;
+
+-- הסבר:
+-- GROUP BY – מאחד שורות לפי ערך (כאן לפי team_id)
+-- COUNT(*) – סופר את מספר השורות בכל קבוצה
+-- אפשר גם SUM / AVG / MIN / MAX
+
+-- ספירת ניצחונות לכל קבוצה:
+SELECT team_id,
+       SUM(CASE WHEN result='W' THEN 1 ELSE 0 END) AS wins
+FROM games_teams
+GROUP BY team_id;
+
+-- הסבר:
+-- CASE WHEN – כמו if, בודק תנאי לכל שורה
+-- SUM – סוכם את הערכים (1 לניצחון, 0 אחרת)
+
+-- שאילתה שמחזירה שמות קבוצות במקום IDs:
+SELECT g.game_id, th.team_name AS home, ta.team_name AS away,
+       g.home_score, g.away_score
+FROM games g
+JOIN teams th ON g.home_team_id = th.team_id
+JOIN teams ta ON g.away_team_id = ta.team_id;
+
+-- הסבר:
+-- JOIN – מחבר טבלאות לפי תנאי
+-- אם לא נגדיר ON נכון → תיווצר כפילות (Cartesian Product)
+
+
+-- מספר רץ לכל משחק לפי קבוצה:
+SELECT game_id, team_id, date,
+       ROW_NUMBER() OVER(PARTITION BY team_id ORDER BY date DESC) AS rn
+FROM games_teams;
+
+-- הסבר:
+-- ROW_NUMBER – נותן מספר לכל שורה
+-- PARTITION BY – מתחיל ספירה מחדש לכל קבוצה
+-- ORDER BY – מגדיר את סדר המספור
+-- שימוש: לבחור את המשחק האחרון לכל קבוצה (WHERE rn=1)
+
+
+SELECT 
+    GETDATE() AS now,                       -- מחזיר את התאריך והשעה הנוכחיים
+    DATEADD(DAY, -7, GETDATE()) AS week_ago, -- שבוע אחורה
+    DATEDIFF(DAY, date, GETDATE()) AS days_since_game -- הבדל ימים בין המשחק להיום
+FROM games;
+
+
+SELECT 
+    LEN(team_name) AS name_length,           -- אורך שם הקבוצה
+    CHARINDEX('A', team_name) AS first_A     -- המיקום הראשון של 'A' במחרוזת
+FROM teams;
+
+
+-- רק קבוצות עם יותר מ-5 משחקים:
+SELECT team_id, COUNT(*) AS games
+FROM games_teams
+GROUP BY team_id
+HAVING COUNT(*) > 5;
+
+-- הסבר:
+-- WHERE – מסנן לפני ה-Group By
+-- HAVING – מסנן אחרי ה-Group By (על ערכים מצטברים)
