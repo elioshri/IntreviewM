@@ -89,3 +89,113 @@ HAVING COUNT(*) > 5;
 -- הסבר:
 -- WHERE – מסנן לפני ה-Group By
 -- HAVING – מסנן אחרי ה-Group By (על ערכים מצטברים)
+
+## 10. DISTINCT – להיפטר מכפילויות
+```sql
+-- מחזיר רשימת קבוצות ייחודיות ששיחקו אי פעם בבית:
+SELECT DISTINCT home_team_id
+FROM games;
+
+-- הסבר:
+-- DISTINCT מסיר כפילויות ברשומות המוחזרות.
+
+
+-- החלפת ערכי NULL ב-0 כדי למנוע סכומים/ממוצעים שגויים:
+SELECT 
+  ISNULL(attendance, 0)             AS attendance_isnull, -- SQL Server-ספציפי
+  COALESCE(attendance, 0)           AS attendance_coalesce -- סטנדרטי (מועדף לניידות)
+FROM games
+WHERE attendance IS NULL;           -- בדיקה ל-NULL תמיד עם IS NULL (לא = NULL)
+
+
+-- מיון לפי תאריך ואז לפי מזהה משחק, והחזרת "עמוד" תוצאות:
+SELECT game_id, date, home_team_id, away_team_id
+FROM games
+ORDER BY date DESC, game_id DESC
+OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY;   -- דלג 20, הבא 10 (paging בסגנון LIMIT/OFFSET)
+
+
+-- 3 הסקורים הגבוהים ביותר בבית, כולל "שווי מקום" במקום השלישי:
+SELECT TOP (3) WITH TIES game_id, home_score
+FROM games
+ORDER BY home_score DESC;   -- WITH TIES יחזיר גם שורות נוספות עם אותו דירוג
+
+
+-- UNION מסיר כפילויות; UNION ALL לא מסיר (מהיר יותר)
+SELECT home_team_id AS team_id FROM games
+UNION
+SELECT away_team_id FROM games;
+
+SELECT home_team_id AS team_id FROM games
+UNION ALL
+SELECT away_team_id FROM games;
+
+
+-- המרת תאריך לטקסט ולהיפך:
+SELECT 
+  CAST(date AS VARCHAR(10))     AS date_text_cast,
+  CONVERT(VARCHAR(10), date, 23) AS date_text_convert_yyyy_mm_dd, -- פורמט 23 = YYYY-MM-DD
+  CAST('2025-02-01' AS DATE)     AS as_date;
+
+
+-- משחק אחרון לכל קבוצה (דוגמה קלאסית עם ROW_NUMBER בתוך CTE):
+WITH games_expanded AS (
+  SELECT 
+    game_id, date,
+    home_team_id AS team_id, home_score AS gf, away_score AS ga
+  FROM games
+  UNION ALL
+  SELECT 
+    game_id, date,
+    away_team_id AS team_id, away_score AS gf, home_score AS ga
+  FROM games
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER(PARTITION BY team_id ORDER BY date DESC, game_id DESC) AS rn
+  FROM games_expanded
+)
+SELECT *
+FROM ranked
+WHERE rn = 1;  -- השורה האחרונה לכל קבוצה
+
+
+-- Running total לשערים לכל קבוצה לאורך זמן:
+WITH per_team AS (
+  SELECT date, home_team_id AS team_id, home_score AS gf FROM games
+  UNION ALL
+  SELECT date, away_team_id AS team_id, away_score AS gf FROM games
+)
+SELECT 
+  team_id, date, gf,
+  SUM(gf) OVER(PARTITION BY team_id ORDER BY date
+               ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_gf
+FROM per_team;
+
+-- ממוצע נע 3 משחקים:
+SELECT 
+  team_id, date, gf,
+  AVG(gf*1.0) OVER(PARTITION BY team_id ORDER BY date
+                   ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS ma3
+FROM per_team;
+
+
+-- דוגמת PIVOT: סכום שערים לפי סוג בית/חוץ לעמודות:
+WITH base AS (
+  SELECT 'home' AS side, home_score AS goals FROM games
+  UNION ALL
+  SELECT 'away' AS side, away_score AS goals FROM games
+)
+SELECT [home] AS home_goals, [away] AS away_goals
+FROM base
+PIVOT (SUM(goals) FOR side IN ([home], [away])) p;
+
+
+-- (אין פה קוד רץ – הערות כלליות)
+-- 1) אינדקסים: על עמודות שמופיעות ב-JOIN/WHERE/ORDER BY לעיתים כדאי אינדקס.
+-- 2) הימנע מפונקציות על העמודה בצד שמאל של WHERE (לדוגמה: WHERE YEAR(date)=2025) – השתמש בטווחי תאריכים.
+-- 3) העדף UNION ALL על UNION כשלא צריך הסרת כפילויות – מהיר יותר.
+-- 4) EXISTS לרוב יעיל יותר מ-IN על תתי-שאילתה גדולים.
+-- 5) בדוק תוכנית ביצוע (Execution Plan) אם שואלים "איך היית מאבחן שאילתה איטית".
+
+
