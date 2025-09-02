@@ -1,0 +1,168 @@
+######################################################################
+# 📌 02 – ספריות חשובות לדאטא אנליסט: NumPy, pandas, Matplotlib
+#
+# מה יש פה:
+#  1) NumPy – וקטורים/מטריצות ופעולות מתמטיות מהירות
+#  2) pandas – טעינת נתונים, ניקוי, GroupBy, Merge, Pivot, תאריכים, rolling
+#  3) Matplotlib – גרפים בסיסיים להצגת תובנות
+#
+# הכל עם הסברים בעברית, דוגמאות קצרות וברורות.
+######################################################################
+
+# ---------------------------------------------------------------
+# 1) NumPy – חישוב מהיר על מערכים
+# ---------------------------------------------------------------
+import numpy as np
+
+# יצירת מערך
+arr = np.array([1, 2, 3, 4], dtype=np.float64)
+print("arr:", arr, "dtype:", arr.dtype)
+
+# פעולות וקטוריות (רצות מהר מאוד לעומת לולאות פייתון):
+print("arr + 10:", arr + 10)
+print("arr * 2:", arr * 2)
+print("mean:", arr.mean(), "std:", arr.std(), "sum:", arr.sum())
+
+# מטריצות
+A = np.array([[1, 2], [3, 4]])
+B = np.eye(2)              # מטריצת יחידה 2x2
+print("A @ B:", A @ B)     # כפל מטריצות
+print("transpose(A):", A.T)
+
+# מסכות (סינון על תנאים)
+mask = arr > 2
+print("mask:", mask, "filtered:", arr[mask])
+
+# טיפ: ל־pandas יש אינטגרציה מצוינת עם NumPy (s.values וכו').
+
+
+# ---------------------------------------------------------------
+# 2) pandas – טעינה, ניקוי, טרנספורמציות וניתוחים
+# ---------------------------------------------------------------
+import pandas as pd
+
+# נייצר DataFrame קטן לדוגמה (במבחן אפשר גם pd.read_csv("file.csv"))
+orders = pd.DataFrame({
+    "order_id":   [101, 102, 103, 104, 105, 106],
+    "customer_id":[1,   1,   2,   2,   3,   1  ],
+    "order_date": ["2025-07-01","2025-07-03","2025-07-03","2025-07-10","2025-07-11","2025-07-12"],
+    "amount":     [120,  80,   50,  150,  300,  90]
+})
+
+customers = pd.DataFrame({
+    "customer_id":[1, 2, 3],
+    "name":       ["Dana","Avi","Chen"],
+    "city":       ["Tel Aviv","Haifa","Jerusalem"]
+})
+
+print("\n=== orders.head() ===\n", orders.head())
+print("\n=== customers ===\n", customers)
+
+# המרה לעמודת תאריך ושדות זמן
+orders["order_date"] = pd.to_datetime(orders["order_date"])
+orders["ym"] = orders["order_date"].dt.to_period("M")   # שנה-חודש (Period)
+orders["day"] = orders["order_date"].dt.date             # רק תאריך
+
+# סינון ומיון
+big = orders[orders["amount"] >= 100].sort_values("amount", ascending=False)
+print("\n=== big orders (>=100) ===\n", big)
+
+# בחירת עמודות
+subset = orders[["order_id","customer_id","amount"]]
+print("\n=== subset ===\n", subset)
+
+# GroupBy – סכום מכירות ללקוח
+per_customer = (orders
+                .groupby("customer_id", as_index=False)["amount"]
+                .sum()
+                .rename(columns={"amount":"total_amount"}))
+print("\n=== per_customer (sum) ===\n", per_customer)
+
+# ממוצע מכירות ליום
+daily = (orders
+         .groupby("day", as_index=False)["amount"]
+         .sum()
+         .rename(columns={"amount":"daily_sales"}))
+print("\n=== daily sales ===\n", daily)
+
+# Merge – צרף פרטי לקוחות למכירות
+merged = per_customer.merge(customers, on="customer_id", how="left")
+print("\n=== merged per_customer + customers ===\n", merged)
+
+# Pivot / Pivot_table – מכירות לפי חודש × לקוח
+monthly = (orders
+           .groupby(["ym","customer_id"], as_index=False)["amount"].sum()
+           .rename(columns={"amount":"sum_amount"}))
+pv = monthly.pivot_table(index="ym", columns="customer_id",
+                         values="sum_amount", aggfunc="sum")
+print("\n=== pivot: ym × customer_id (sum) ===\n", pv)
+
+# Running total (cumsum) ללקוח
+monthly_sorted = monthly.sort_values(["customer_id","ym"])
+monthly_sorted["running"] = monthly_sorted.groupby("customer_id")["sum_amount"].cumsum()
+print("\n=== running total per customer ===\n", monthly_sorted)
+
+# Rolling window – ממוצע נע ל-3 תקופות לכל לקוח (זקוק למיון)
+monthly_sorted["rolling3"] = (monthly_sorted
+                              .groupby("customer_id")["sum_amount"]
+                              .rolling(3, min_periods=1)
+                              .mean()
+                              .reset_index(level=0, drop=True))
+print("\n=== rolling 3 per customer ===\n", monthly_sorted)
+
+# Handling missing values – מילוי/השלמה
+s = pd.Series([1, None, 3, None, 5])
+print("\n=== fillna ===\n", s.fillna(0))
+print("\n=== ffill (קדימה) ===\n", s.ffill())
+print("\n=== bfill (אחורה) ===\n", s.bfill())
+
+# זיהוי כפילויות והסרה
+dups = pd.DataFrame({"x":[1,1,2,3,3], "y":[10,10,20,30,30]})
+print("\n=== dups ===\n", dups)
+print("\n=== drop_duplicates ===\n", dups.drop_duplicates())
+
+# Apply/Map – הפעלת פונקציה
+orders["size_bucket"] = orders["amount"].map(lambda v: "High" if v>=120 else ("Mid" if v>=80 else "Low"))
+print("\n=== with size_bucket ===\n", orders[["order_id","amount","size_bucket"]])
+
+# Join-keys מרובים
+# (דוגמה סקמטית — אם היו לנו כמה מפתחות: df1.merge(df2, on=["key1","key2"], how="left"))
+
+# שמירה לקבצים
+# orders.to_csv("orders_out.csv", index=False)
+# pv.to_excel("monthly_pivot.xlsx")
+
+
+# ---------------------------------------------------------------
+# 3) Matplotlib – גרפים בסיסיים
+# ---------------------------------------------------------------
+import matplotlib.pyplot as plt
+
+# גרף קו של מכירות יומיות
+plt.figure()
+plt.plot(daily["day"], daily["daily_sales"])
+plt.title("Daily Sales")
+plt.xlabel("Day")
+plt.ylabel("Sales")
+plt.xticks(rotation=45)
+plt.tight_layout()
+# plt.show()  # בטסטים/קונסול סגור אפשר להשאיר כתגובה
+
+# עמודות – סכום מכירות לפי לקוח
+plt.figure()
+plt.bar(per_customer["customer_id"].astype(str), per_customer["total_amount"])
+plt.title("Total Sales by Customer")
+plt.xlabel("Customer ID")
+plt.ylabel("Total Sales")
+plt.tight_layout()
+# plt.show()
+
+######################################################################
+# 💡 טיפים מהירים:
+# • pandas: סדר נכון → מיון לפני groupby().rolling()/cumsum() לפי keys.
+# • זמן: המירו לעיתות (`to_datetime`) מוקדם, והשתמשו ב־.dt (year/month/day/weekday).
+# • Merge: תמיד בדוק את גודל התוצאה (shape) כדי לוודא שלא שיכפלת שורות בטעות.
+# • Pivot: אם יש NaN אחרי pivot_table, שקול .fillna(0) להצגה.
+# • Matplotlib: השתמש ב-tick rotation וב-tight_layout כדי למנוע חיתוך טקסט.
+# • NumPy: מסכות (arr[cond]) והפעלת פעולות וקטוריות מהירות בהרבה מלולאות.
+######################################################################
