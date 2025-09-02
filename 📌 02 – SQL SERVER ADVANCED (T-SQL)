@@ -1,0 +1,144 @@
+/**********************************************************************
+* 📌 02 – SQL SERVER ADVANCED (T-SQL)
+* קובץ זה כולל נושאים מתקדמים:
+* - JOINs
+* - Subqueries
+* - פונקציות חלון (Window Functions)
+* - CTE
+* - טבלאות זמניות ו-APPLY
+* - אינדקסים וביצועים
+**********************************************************************/
+
+----------------------------------------------------------------------
+-- 🔹 JOINS – חיבורים בין טבלאות
+----------------------------------------------------------------------
+
+-- INNER JOIN – רק התאמות
+SELECT o.OrderID, c.CustomerName
+FROM dbo.Orders o
+INNER JOIN dbo.Customers c
+  ON o.CustomerID = c.CustomerID;
+
+-- LEFT JOIN – כל הרשומות מהטבלה השמאלית + התאמות מימין
+SELECT o.OrderID, c.CustomerName
+FROM dbo.Orders o
+LEFT JOIN dbo.Customers c
+  ON o.CustomerID = c.CustomerID;
+
+-- FULL OUTER JOIN – כולל הכל
+SELECT o.OrderID, c.CustomerName
+FROM dbo.Orders o
+FULL OUTER JOIN dbo.Customers c
+  ON o.CustomerID = c.CustomerID;
+
+----------------------------------------------------------------------
+-- 🔹 Subqueries – תתי שאילתות
+----------------------------------------------------------------------
+
+-- לקוחות עם הזמנות מ-2024
+SELECT CustomerID
+FROM dbo.Customers c
+WHERE EXISTS (
+    SELECT 1
+    FROM dbo.Orders o
+    WHERE o.CustomerID = c.CustomerID
+      AND o.OrderDate >= '2024-01-01'
+);
+
+-- תת שאילתה סקלרית
+SELECT CustomerID,
+       (SELECT MAX(OrderDate) FROM dbo.Orders o WHERE o.CustomerID = c.CustomerID) AS last_order
+FROM dbo.Customers;
+
+----------------------------------------------------------------------
+-- 🔹 Window Functions – פונקציות חלון
+----------------------------------------------------------------------
+
+-- דירוג לפי סכום הזמנה
+SELECT CustomerID, OrderID, Amount,
+       RANK() OVER (PARTITION BY CustomerID ORDER BY Amount DESC) AS rnk,
+       ROW_NUMBER() OVER (PARTITION BY CustomerID ORDER BY Amount DESC) AS rn
+FROM dbo.Orders;
+
+-- סכום מצטבר (Running Total)
+SELECT CustomerID, OrderDate, Amount,
+       SUM(Amount) OVER (PARTITION BY CustomerID ORDER BY OrderDate
+                         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_total
+FROM dbo.Orders;
+
+-- ערך קודם/הבא
+SELECT OrderID, Amount,
+       LAG(Amount)  OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS prev_amount,
+       LEAD(Amount) OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS next_amount
+FROM dbo.Orders;
+
+----------------------------------------------------------------------
+-- 🔹 CTE – Common Table Expressions
+----------------------------------------------------------------------
+
+WITH monthly_sales AS (
+    SELECT CustomerID,
+           EOMONTH(OrderDate) AS month_end,
+           SUM(Amount) AS total
+    FROM dbo.Orders
+    GROUP BY CustomerID, EOMONTH(OrderDate)
+)
+SELECT CustomerID, month_end, total,
+       LAG(total) OVER (PARTITION BY CustomerID ORDER BY month_end) AS prev_total
+FROM monthly_sales;
+
+----------------------------------------------------------------------
+-- 🔹 טבלאות זמניות ו-APPLY
+----------------------------------------------------------------------
+
+-- יצירת טבלה זמנית
+SELECT * INTO #big_orders
+FROM dbo.Orders
+WHERE Amount >= 200;
+
+SELECT COUNT(*) FROM #big_orders;
+
+DROP TABLE #big_orders;
+
+-- CROSS APPLY – בחירת N ההזמנות האחרונות לכל לקוח
+SELECT c.CustomerID, x.OrderID, x.OrderDate, x.Amount
+FROM dbo.Customers c
+CROSS APPLY (
+    SELECT TOP 3 *
+    FROM dbo.Orders o
+    WHERE o.CustomerID = c.CustomerID
+    ORDER BY o.OrderDate DESC
+) AS x;
+
+----------------------------------------------------------------------
+-- 🔹 אינדקסים וביצועים
+----------------------------------------------------------------------
+
+-- יצירת אינדקס
+CREATE NONCLUSTERED INDEX IX_Orders_Customer_Date
+ON dbo.Orders(CustomerID, OrderDate);
+
+-- בדיקת ביצועים
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT OrderID, Amount
+FROM dbo.Orders
+WHERE OrderDate >= '2024-01-01' AND Amount > 100;
+
+-- טיפ חשוב:
+--   תמיד להימנע מ-SELECT *
+--   להקפיד על תנאים "SARGable" (שניתנים לניצול אינדקס)
+--   לדוגמה: WHERE OrderDate >= '2024-01-01' (טוב)
+--            WHERE YEAR(OrderDate)=2024 (רע, כי שובר אינדקס)
+----------------------------------------------------------------------
+
+/**********************************************************************
+* סיכום נושאים מתקדמים:
+* ✅ JOINS – שילוב טבלאות
+* ✅ Subqueries – שאילתות פנימיות
+* ✅ Window Functions – חישובים בלי GROUP BY
+* ✅ CTE – שאילתות זמניות לשיפור קריאות
+* ✅ טבלאות זמניות ו-APPLY
+* ✅ אינדקסים – מפתח לשיפור ביצועים
+**********************************************************************/
