@@ -1,0 +1,241 @@
+/**********************************************************************
+* 📌 06 – SQL SERVER INTERVIEW Q&A (Data Analyst)
+* שאלות נפוצות לראיונות דאטה אנליסט + פתרונות מלאים + הסברים בעברית
+*
+* הסכמה לדוגמה:
+*   dbo.Customers(CustomerID, CustomerName, City, SignupDate)
+*   dbo.Orders(OrderID, CustomerID, OrderDate, Amount)
+*   dbo.OrderItems(OrderItemID, OrderID, ProductID, Qty, UnitPrice)
+*   dbo.Products(ProductID, ProductName, Category)
+**********************************************************************/
+
+----------------------------------------------------------------------
+-- 🧪 Q1: מצא את סך כל המכירות (Amount) בכל עונה/שנה
+----------------------------------------------------------------------
+
+SELECT YEAR(OrderDate) AS year,
+       SUM(Amount)     AS total_sales
+FROM dbo.Orders
+GROUP BY YEAR(OrderDate)
+ORDER BY year;
+
+-- הסבר: שימוש ב-YEAR לקטגוריה, SUM לאגרגציה. טיפי קריאה נפוצים לראיון.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q2: לקוחות עם יותר מ-5 הזמנות
+----------------------------------------------------------------------
+
+SELECT c.CustomerID, c.CustomerName,
+       COUNT(o.OrderID) AS order_count
+FROM dbo.Customers c
+JOIN dbo.Orders o ON o.CustomerID = c.CustomerID
+GROUP BY c.CustomerID, c.CustomerName
+HAVING COUNT(o.OrderID) > 5
+ORDER BY order_count DESC;
+
+-- הסבר: HAVING מסנן אחרי GROUP BY (WHERE לא עובד על COUNT).
+
+
+----------------------------------------------------------------------
+-- 🧪 Q3: ההזמנה היקרה ביותר לכל לקוח
+----------------------------------------------------------------------
+
+WITH ranked AS (
+  SELECT o.CustomerID, o.OrderID, o.Amount,
+         ROW_NUMBER() OVER (PARTITION BY o.CustomerID ORDER BY o.Amount DESC) AS rn
+  FROM dbo.Orders o
+)
+SELECT CustomerID, OrderID, Amount
+FROM ranked
+WHERE rn = 1;
+
+-- הסבר: ROW_NUMBER בתוך חלון מחזיר את ה-"מספר סידורי" לכל שורה בקבוצה.
+-- rn=1 = ההזמנה היקרה ביותר לכל לקוח.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q4: ממוצע סכום ההזמנות ללקוח
+----------------------------------------------------------------------
+
+SELECT c.CustomerID, c.CustomerName,
+       AVG(o.Amount) AS avg_amount
+FROM dbo.Customers c
+JOIN dbo.Orders o ON o.CustomerID = c.CustomerID
+GROUP BY c.CustomerID, c.CustomerName
+ORDER BY avg_amount DESC;
+
+-- הסבר: AVG מחושב אחרי Group By. שאלה נפוצה מאוד.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q5: לקוחות שלא ביצעו אף הזמנה
+----------------------------------------------------------------------
+
+SELECT c.CustomerID, c.CustomerName
+FROM dbo.Customers c
+LEFT JOIN dbo.Orders o ON o.CustomerID = c.CustomerID
+WHERE o.OrderID IS NULL;
+
+-- הסבר: Anti-Join עם LEFT JOIN + בדיקת NULL.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q6: מוצרים הכי נמכרים (Top 3 לפי כמות)
+----------------------------------------------------------------------
+
+SELECT TOP (3) p.ProductName,
+       SUM(oi.Qty) AS total_qty
+FROM dbo.OrderItems oi
+JOIN dbo.Products p ON p.ProductID = oi.ProductID
+GROUP BY p.ProductName
+ORDER BY total_qty DESC;
+
+-- הסבר: סכימת Quantities + TOP (3) על פי ORDER BY.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q7: כמה לקוחות ייחודיים קנו בכל שנה
+----------------------------------------------------------------------
+
+SELECT YEAR(o.OrderDate) AS year,
+       COUNT(DISTINCT o.CustomerID) AS unique_customers
+FROM dbo.Orders o
+GROUP BY YEAR(o.OrderDate)
+ORDER BY year;
+
+-- הסבר: COUNT(DISTINCT ...) = ספירת ייחודיים (שאלה קלאסית).
+
+
+----------------------------------------------------------------------
+-- 🧪 Q8: אחוז הזמנות מעל הממוצע
+----------------------------------------------------------------------
+
+WITH stats AS (
+  SELECT AVG(Amount) AS avg_amount FROM dbo.Orders
+)
+SELECT
+  100.0 * SUM(CASE WHEN o.Amount > s.avg_amount THEN 1 ELSE 0 END) / COUNT(*) AS pct_above_avg
+FROM dbo.Orders o CROSS JOIN stats s;
+
+-- הסבר: מחשבים ממוצע פעם אחת (CTE/סאב-קוויר), ואז משווים כל הזמנה אליו.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q9: הזמנה אחרונה לכל לקוח
+----------------------------------------------------------------------
+
+WITH ranked AS (
+  SELECT o.CustomerID, o.OrderID, o.OrderDate,
+         ROW_NUMBER() OVER (PARTITION BY o.CustomerID ORDER BY o.OrderDate DESC) AS rn
+  FROM dbo.Orders o
+)
+SELECT CustomerID, OrderID, OrderDate
+FROM ranked
+WHERE rn = 1;
+
+-- הסבר: דפוס נפוץ מאוד → למצוא רשומה אחרונה בקבוצה.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q10: הכנסה חודשית (סכום Amount לפי חודש)
+----------------------------------------------------------------------
+
+SELECT FORMAT(OrderDate,'yyyy-MM') AS ym,
+       SUM(Amount) AS total_sales
+FROM dbo.Orders
+GROUP BY FORMAT(OrderDate,'yyyy-MM')
+ORDER BY ym;
+
+-- הסבר: FORMAT נותן yyyy-MM מוכן. טיפוסי לשאלות BI / אנליסט.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q11: מצא את הפער הכי גדול בין שתי הזמנות עוקבות ללקוח
+----------------------------------------------------------------------
+
+WITH diffs AS (
+  SELECT CustomerID, OrderDate,
+         LAG(OrderDate) OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS prev_date
+  FROM dbo.Orders
+)
+SELECT CustomerID,
+       MAX(DATEDIFF(DAY, prev_date, OrderDate)) AS max_gap_days
+FROM diffs
+WHERE prev_date IS NOT NULL
+GROUP BY CustomerID
+ORDER BY max_gap_days DESC;
+
+-- הסבר: שימוש ב-LAG כדי לראות את ההזמנה הקודמת, ואז חישוב DATEDIFF.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q12: אחוז מכירות לכל קטגוריה מתוך כלל המכירות
+----------------------------------------------------------------------
+
+WITH cat AS (
+  SELECT p.Category,
+         SUM(oi.Qty * oi.UnitPrice) AS sales
+  FROM dbo.OrderItems oi
+  JOIN dbo.Products p ON p.ProductID = oi.ProductID
+  GROUP BY p.Category
+),
+tot AS (
+  SELECT SUM(sales) AS total_sales FROM cat
+)
+SELECT c.Category, c.sales,
+       CAST(100.0*c.sales/t.total_sales AS DECIMAL(6,2)) AS pct
+FROM cat c CROSS JOIN tot t
+ORDER BY pct DESC;
+
+-- הסבר: חישוב סכום לפי קטגוריה + סך הכל + אחוזים.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q13: ממוצע נע ל-7 ימים של מכירות יומיות
+----------------------------------------------------------------------
+
+WITH daily AS (
+  SELECT CAST(OrderDate AS DATE) AS d, SUM(Amount) AS daily_sales
+  FROM dbo.Orders
+  GROUP BY CAST(OrderDate AS DATE)
+)
+SELECT d, daily_sales,
+       AVG(daily_sales) OVER (ORDER BY d ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS avg7
+FROM daily
+ORDER BY d;
+
+-- הסבר: שימוש בחלון ROWS ל-7 ימים. תרגיל אנליסטי קלאסי.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q14: מציאת הלקוחות עם ההכנסה הגבוהה ביותר לעומת הממוצע הכללי
+----------------------------------------------------------------------
+
+WITH totals AS (
+  SELECT CustomerID, SUM(Amount) AS total_amt
+  FROM dbo.Orders
+  GROUP BY CustomerID
+),
+avg_all AS (
+  SELECT AVG(total_amt) AS avg_amt FROM totals
+)
+SELECT t.CustomerID, t.total_amt
+FROM totals t CROSS JOIN avg_all a
+WHERE t.total_amt > a.avg_amt
+ORDER BY t.total_amt DESC;
+
+-- הסבר: חישוב סך לכל לקוח, חישוב ממוצע כללי, ואז סינון מי מעליו.
+
+
+----------------------------------------------------------------------
+-- 🧪 Q15: חישוב ARPU (Average Revenue Per User) שנתי
+----------------------------------------------------------------------
+
+SELECT YEAR(OrderDate) AS year,
+       SUM(Amount)*1.0 / COUNT(DISTINCT CustomerID) AS arpu
+FROM dbo.Orders
+GROUP BY YEAR(OrderDate)
+ORDER BY year;
+
+-- הסבר: ARPU = הכנסות / משתמשים ייחודיים בתקופה. שאלה פופולרית באנליטיקה.
